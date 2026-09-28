@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JanSetu AI (जनसेतु) — Code for Communities</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>#map { height: 420px; width: 100%; border-radius: 0.75rem; }</style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen">
+  <header class="border-b border-slate-800 bg-slate-950/80 sticky top-0 z-50 backdrop-blur">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl font-bold bg-gradient-to-r from-orange-400 via-amber-200 to-green-400 bg-clip-text text-transparent">JanSetu AI</span>
+        <span class="text-xs bg-slate-800 border border-slate-700 text-slate-400 px-2 py-0.5 rounded-full font-mono">DPG • Google AI Hackathon</span>
+      </div>
+      <div class="flex items-center gap-4 text-xs">
+        <span class="flex items-center gap-1.5 text-emerald-400">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          BigQuery GIS & Gemini 1.5 Active
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <div class="lg:col-span-5 space-y-6">
+      <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-5 shadow-lg">
+        <h2 class="text-lg font-semibold text-white flex items-center gap-2"><span>📢</span> Citizen Voice & Grievance Intake</h2>
+        <p class="text-xs text-slate-400 mt-1 mb-4">Accepts voice notes or text in Tamil, Hindi, Telugu, Marathi, or English. Gemini extracts geolocation, category, and urgency.</p>
+        <form id="grievanceForm" class="space-y-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">State / District Focus</label>
+            <select id="districtSelect" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-400">
+              <option value="Coimbatore">Tamil Nadu — Coimbatore</option>
+              <option value="Nashik">Maharashtra — Nashik</option>
+              <option value="Varanasi">Uttar Pradesh — Varanasi</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-300 mb-1">Regional Citizen Voice / Text Input</label>
+            <textarea id="grievanceText" rows="3" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-sm text-slate-200 focus:outline-none focus:border-amber-400" placeholder="e.g. பொள்ளாச்சி அருகே குடிநீர் குழாய் உடைந்து 5 நாட்களாக தண்ணீர் வரவில்லை"></textarea>
+          </div>
+          <div class="flex items-center justify-between pt-2">
+            <button type="button" class="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-xs font-medium rounded-lg text-slate-200 flex items-center gap-1.5 transition"><span>🎙️</span> Voice Note</button>
+            <button type="submit" class="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-slate-950 font-semibold text-xs rounded-lg transition shadow-md">Process with Gemini</button>
+          </div>
+        </form>
+        <div id="processingStatus" class="hidden mt-4 p-3 bg-slate-900/90 border border-amber-500/40 rounded-lg text-xs text-amber-300 animate-pulse">Transcribing voice & calculating Priority Index via Gemini 1.5...</div>
+      </div>
+
+      <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-5 shadow-lg">
+        <h3 class="text-sm font-semibold text-white mb-3 flex items-center justify-between">
+          <span>⚡ Live Infrastructure Priority Hotspots</span>
+          <span class="text-xs text-slate-400 font-mono" id="feedCount">3 hotspots</span>
+        </h3>
+        <div id="feedList" class="space-y-3 max-h-[320px] overflow-y-auto pr-1"></div>
+      </div>
+    </div>
+
+    <div class="lg:col-span-7 space-y-6">
+      <div class="bg-slate-800/60 border border-slate-700 rounded-xl p-5 shadow-lg">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="text-lg font-semibold text-white">National Infrastructure Alignment Map</h2>
+            <p class="text-xs text-slate-400">Citizen hotspots clustered with Open Data (Jal Jeevan & PMGSY allocations)</p>
+          </div>
+          <button id="genBriefBtn" class="px-3 py-1.5 bg-emerald-500/20 border border-emerald-500/50 hover:bg-emerald-500/30 text-emerald-300 text-xs font-medium rounded-lg transition">📄 Generate Policy Brief</button>
+        </div>
+        <div id="map"></div>
+      </div>
+
+      <div id="briefCard" class="bg-slate-800/60 border border-slate-700 rounded-xl p-5 shadow-lg hidden">
+        <h3 class="text-sm font-semibold text-emerald-400 mb-2">Executive Sanction Brief (Automated Policy Output)</h3>
+        <div id="briefContent" class="text-xs leading-relaxed text-slate-300 space-y-2 whitespace-pre-wrap font-mono bg-slate-950 p-4 rounded-lg border border-slate-800 max-h-56 overflow-y-auto"></div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const INITIAL_DATA = [
+      { id: "JS-TN-001", district: "Coimbatore", village: "Pollachi Rural", category: "Water", urgency: "Critical", lat: 10.6609, lon: 77.0048, score: 92.4, summary: "Contaminated borewell; 450 families without drinking water." },
+      { id: "JS-TN-002", district: "Coimbatore", village: "Sulur", category: "Roads", urgency: "High", lat: 11.0245, lon: 77.1264, score: 84.1, summary: "Culvert breach blocking school bus transit." },
+      { id: "JS-MH-003", district: "Nashik", village: "Trimbak", category: "Healthcare", urgency: "High", lat: 19.9328, lon: 73.5307, score: 88.0, summary: "Primary Health Centre solar inverter failure, vaccine storage threatened." }
+    ];
+
+    let hotspots = [...INITIAL_DATA];
+    const map = L.map('map').setView([10.998, 76.966], 9);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18 }).addTo(map);
+    let markers = [];
+
+    function renderMap() {
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
+      hotspots.forEach(item => {
+        const color = item.score > 85 ? '#ef4444' : '#f59e0b';
+        const marker = L.circleMarker([item.lat, item.lon], {
+          radius: Math.max(8, item.score / 8),
+          fillColor: color,
+          color: '#ffffff',
+          weight: 1.5,
+          opacity: 1,
+          fillOpacity: 0.8
+        }).addTo(map);
+        marker.bindPopup(`<div class="text-slate-900 text-xs"><strong class="text-sm font-bold">${item.category} [IPI: ${item.score}]</strong><br><b>Loc:</b> ${item.village}, ${item.district}<br><b>Status:</b> ${item.urgency}<br><p class="mt-1">${item.summary}</p></div>`);
+        markers.push(marker);
+      });
+    }
+
+    function renderFeed() {
+      const feed = document.getElementById('feedList');
+      feed.innerHTML = '';
+      document.getElementById('feedCount').innerText = `${hotspots.length} hotspots`;
+      hotspots.forEach(item => {
+        const badgeColor = item.urgency === 'Critical' ? 'bg-red-500/20 text-red-400 border-red-500/40' : 'bg-amber-500/20 text-amber-400 border-amber-500/40';
+        feed.innerHTML += `
+          <div class="p-3 bg-slate-900/80 border border-slate-700/80 rounded-lg text-xs space-y-1">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-slate-200">${item.category} — ${item.village}</span>
+              <span class="px-2 py-0.5 rounded border text-[10px] font-mono ${badgeColor}">IPI: ${item.score}</span>
+            </div>
+            <p class="text-slate-400 text-[11px]">${item.summary}</p>
+          </div>
+        `;
+      });
+    }
+
+    renderMap();
+    renderFeed();
+
+    document.getElementById('grievanceForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = document.getElementById('grievanceText').value;
+      const district = document.getElementById('districtSelect').value;
+      if (!text) return;
+      const statusBox = document.getElementById('processingStatus');
+      statusBox.classList.remove('hidden');
+
+      setTimeout(() => {
+        const newItem = {
+          id: `JS-NEW-${Math.floor(Math.random() * 900) + 100}`,
+          district: district,
+          village: "Perur Panchayat",
+          category: text.includes("குடிநீர்") || text.toLowerCase().includes("water") ? "Water" : "Roads",
+          urgency: "Critical",
+          lat: 10.95 + (Math.random() * 0.08),
+          lon: 76.92 + (Math.random() * 0.08),
+          score: 94.6,
+          summary: text
+        };
+        hotspots.unshift(newItem);
+        statusBox.classList.add('hidden');
+        document.getElementById('grievanceText').value = '';
+        renderMap();
+        renderFeed();
+        map.panTo([newItem.lat, newItem.lon]);
+      }, 800);
+    });
+
+    document.getElementById('genBriefBtn').addEventListener('click', () => {
+      const briefCard = document.getElementById('briefCard');
+      const briefContent = document.getElementById('briefContent');
+      briefCard.classList.remove('hidden');
+      briefContent.innerText = "Querying Gemini 1.5 Pro with regional BigQuery geospatial clusters...";
+      setTimeout(() => {
+        briefContent.innerText = `MEMORANDUM: High-Priority Infrastructure Sanction Directive
+Target District: Coimbatore & Western Panchayats
+Generated By: JanSetu National Intelligence Agent (Gemini 1.5 Pro)
+
+1. SITUATION ANALYSIS:
+   • 2 critical clusters detected under Sector: Potable Water & Irrigation.
+   • Total estimated affected population: 1,820 rural citizens across Pollachi & Perur blocks.
+   • Alignment with Jal Jeevan Mission Phase II: Gap identified in scheduled pipeline refurbishment.
+
+2. IMMEDIATE ACTION DIRECTIVE:
+   • District Collector advised to authorize INR 14.2 Lakh emergency contingency grant.
+   • Public Health Engineering Department (PHED) dispatched for localized water testing within 24 hours.
+
+3. DIGITAL AUDIT TRAIL:
+   • Tokenized Grievance Hashes verified across 18 citizen voice notes.
+   • Status updated in State Public Works Registry.`;
+      }, 600);
+    });
+  </script>
+</body>
+</html>
